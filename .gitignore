@@ -6,3 +6,10 @@ coverage/
 .vscode/
 .rts2*
 dist/
+*.tgz
+test-local.js
+client-test.js
+server-test.js
+server.mjs
+test-real.js
+build/

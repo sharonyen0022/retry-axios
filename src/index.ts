@@ -102,6 +102,8 @@ export interface RetryConfig {
 	 * Populated automatically when retries are performed.
 	 * The first element is the initial error, subsequent elements are retry errors.
 	 */
+	returnFirstError?: boolean;
+
 	errors?: AxiosError[];
 }
 
@@ -224,171 +226,160 @@ function parseRetryAfter(header: string): number | undefined {
 }
 
 async function onError(instance: AxiosInstance, error: AxiosError) {
-	if (isCancel(error)) {
-		throw error;
-	}
+  if (isCancel(error)) {
+    throw error;
+  }
 
-	const config = getConfig(error) || {};
-	config.currentRetryAttempt ||= 0;
-	config.retry = typeof config.retry === 'number' ? config.retry : 3;
-	config.retryDelay =
-		typeof config.retryDelay === 'number' ? config.retryDelay : 100;
-	config.backoffType ||= 'exponential';
-	config.httpMethodsToRetry = normalizeArray(config.httpMethodsToRetry) || [
-		'GET',
-		'HEAD',
-		'PUT',
-		'OPTIONS',
-		'DELETE',
-	];
-	config.checkRetryAfter =
-		typeof config.checkRetryAfter === 'boolean' ? config.checkRetryAfter : true;
-	config.maxRetryAfter =
-		typeof config.maxRetryAfter === 'number'
-			? config.maxRetryAfter
-			: 60_000 * 5;
-
-	config.statusCodesToRetry =
-		normalizeArray(config.statusCodesToRetry) || retryRanges;
-
-	// Put the config back into the err
-	const axiosError = error as AxiosError;
-
-	// biome-ignore lint/suspicious/noExplicitAny: Allow for wider range of errors
-	(axiosError.config as any) = axiosError.config || {}; // Allow for wider range of errors
-	(axiosError.config as RaxConfig).raxConfig = { ...config };
-
-	// Initialize errors array on first error, or append to existing array
-	const errors = config.errors ?? [];
-	errors.push(axiosError);
-
-	setConfigMetadata(config, errors);
-	setConfigMetadata((axiosError.config as RaxConfig).raxConfig, errors);
-
-	// Determine if we should retry the request
-	// First check the retry count limit, then apply custom logic if provided
-	if (config.shouldRetry) {
-		// When custom shouldRetry is provided, we still need to check the retry count
-		// to prevent infinite retries (see issue #117)
-		config.currentRetryAttempt ||= 0;
-		if (config.currentRetryAttempt >= (config.retry ?? 0)) {
-			throw axiosError;
-		}
-		// Now apply the custom shouldRetry logic
-		if (!config.shouldRetry(axiosError)) {
-			throw axiosError;
-		}
-	} else {
-		// Use the default shouldRetryRequest logic
-		if (!shouldRetryRequest(axiosError)) {
-			throw axiosError;
-		}
-	}
-
-	// Create a promise that invokes the retry after the backOffDelay
-	const onBackoffPromise = new Promise((resolve, reject) => {
-		let delay = 0;
-		// If enabled, check for 'Retry-After' header in response to use as delay
-		if (
-			config.checkRetryAfter &&
-			axiosError.response?.headers?.['retry-after']
-		) {
-			const retryAfter = parseRetryAfter(
-				axiosError.response.headers['retry-after'] as string,
-			);
-			if (
-				retryAfter &&
-				retryAfter > 0 &&
-				retryAfter <= (config.maxRetryAfter ?? 0)
-			) {
-				delay = retryAfter;
-			} else {
-				reject(axiosError);
-				return;
-			}
-		}
-
-		// Now it's certain that a retry is supposed to happen. Incremenent the
-		// counter, critical for linear and exp backoff delay calc. Note that
-		// `config.currentRetryAttempt` is local to this function whereas
-		// `(err.config as RaxConfig).raxConfig` is state that is tranferred across
-		// retries. That is, we want to mutate `(err.config as
-		// RaxConfig).raxConfig`. Another important note is about the definition of
-		// `currentRetryAttempt`: When we are here becasue the first and actual
-		// HTTP request attempt failed then `currentRetryAttempt` is still zero. We
-		// have found that a retry is indeed required. Since that is (will be)
-		// indeed the first retry it makes sense to now increase
-		// `currentRetryAttempt` by 1. So that it is in fact 1 for the first retry
-		// (as opposed to 0 or 2); an intuitive convention to use for the math
-		// below.
-		// biome-ignore lint/style/noNonNullAssertion: Checked above
-		(axiosError.config as RaxConfig).raxConfig.currentRetryAttempt! += 1;
-
-		// Calculate retries remaining
-		(axiosError.config as RaxConfig).raxConfig.retriesRemaining =
-			// biome-ignore lint/style/noNonNullAssertion: Checked above
-			config.retry! -
-			// biome-ignore lint/style/noNonNullAssertion: Checked above
-			(axiosError.config as RaxConfig).raxConfig.currentRetryAttempt!;
-
-		// Store with shorter and more expressive variable name.
-		// biome-ignore lint/style/noNonNullAssertion: Checked above
-		const retrycount = (axiosError.config as RaxConfig).raxConfig
-			.currentRetryAttempt!;
-
-		// Calculate delay according to chosen strategy
-		// Default to exponential backoff - formula: ((2^c - 1) / 2) * retryDelay
-		if (delay === 0) {
-			// Was not set by Retry-After logic
-			if (config.backoffType === 'linear') {
-				// The delay between the first (actual) attempt and the first retry
-				// should be non-zero. Rely on the convention that `retrycount` is
-				// equal to 1 for the first retry when we are in here (was once 0,
-				// which was a bug -- see #122).
-				delay = retrycount * 1000;
-			} else if (config.backoffType === 'static') {
-				// biome-ignore lint/style/noNonNullAssertion: Checked above
-				delay = config.retryDelay!;
-			} else {
-				// Exponential backoff with retryDelay as base multiplier
-				// biome-ignore lint/style/noNonNullAssertion: Checked above
-				const baseDelay = config.retryDelay!;
-				delay = ((2 ** retrycount - 1) / 2) * baseDelay;
-
-				// Apply jitter if configured
-				const jitter = config.jitter || 'none';
-				if (jitter === 'full') {
-					// Full jitter: random delay between 0 and calculated delay
-					delay = Math.random() * delay;
-				} else if (jitter === 'equal') {
-					// Equal jitter: half fixed, half random
-					delay = delay / 2 + Math.random() * (delay / 2);
-				}
-				// 'none' or any other value: no jitter applied
-			}
-
-			if (typeof config.maxRetryDelay === 'number') {
-				delay = Math.min(delay, config.maxRetryDelay);
-			}
-		}
-
-		setTimeout(resolve, delay);
-	});
-
-	if (config.onError) {
-		await config.onError(axiosError);
-	}
-
-	// Return the promise in which recalls axios to retry the request
-	return (
-		Promise.resolve()
-			.then(async () => onBackoffPromise)
-			.then(async () => config.onRetryAttempt?.(axiosError))
-			// biome-ignore lint/style/noNonNullAssertion: Checked above
-			.then(async () => instance.request(axiosError.config!))
-	);
+  // --- Fix for Axios v1.1.3+ header loss: deep clone headers ---
+const originalConfig = error.config;
+if (originalConfig) {
+  // Create a shallow copy
+  const clonedConfig: any = { ...originalConfig };
+  
+  // Properly clone headers: use .clone() method if available, otherwise fallback
+  if (originalConfig.headers) {
+    if (typeof (originalConfig.headers as any).clone === 'function') {
+      // AxiosHeaders has a clone method
+      clonedConfig.headers = (originalConfig.headers as any).clone();
+    } else {
+      // Fallback for plain objects
+      clonedConfig.headers = { ...originalConfig.headers };
+    }
+  }
+  
+  // Preserve raxConfig only if it exists (to avoid undefined assignment)
+  if (originalConfig.raxConfig) {
+    clonedConfig.raxConfig = originalConfig.raxConfig;
+  }
+  
+  // Replace the original config with the cloned one
+  error.config = clonedConfig;
 }
+// --- End of header fix ---
 
+  const config = getConfig(error) || {};
+  config.currentRetryAttempt ||= 0;
+  config.retry = typeof config.retry === 'number' ? config.retry : 3;
+  config.retryDelay =
+    typeof config.retryDelay === 'number' ? config.retryDelay : 100;
+  config.backoffType ||= 'exponential';
+  config.httpMethodsToRetry = normalizeArray(config.httpMethodsToRetry) || [
+    'GET',
+    'HEAD',
+    'PUT',
+    'OPTIONS',
+    'DELETE',
+  ];
+  config.checkRetryAfter =
+    typeof config.checkRetryAfter === 'boolean' ? config.checkRetryAfter : true;
+  config.maxRetryAfter =
+    typeof config.maxRetryAfter === 'number'
+      ? config.maxRetryAfter
+      : 60_000 * 5;
+
+  config.statusCodesToRetry =
+    normalizeArray(config.statusCodesToRetry) || retryRanges;
+
+  // Put the config back into the err
+  const axiosError = error as AxiosError;
+
+  // biome-ignore lint/suspicious/noExplicitAny: Allow for wider range of errors
+  (axiosError.config as any) = axiosError.config || {};
+  if (!(axiosError.config as RaxConfig).raxConfig) {
+  (axiosError.config as RaxConfig).raxConfig = { ...config };
+	}
+
+  // Initialize errors array on first error, or append to existing array
+  const errors = config.errors ?? [];
+  errors.push(axiosError);
+
+  setConfigMetadata(config, errors);
+  setConfigMetadata((axiosError.config as RaxConfig).raxConfig, errors);
+
+  // Determine if we should retry the request
+  if (config.shouldRetry) {
+    config.currentRetryAttempt ||= 0;
+    if (config.currentRetryAttempt >= (config.retry ?? 0)) {
+      throw getFinalError(config, axiosError);
+    }
+    if (!config.shouldRetry(axiosError)) {
+      throw getFinalError(config, axiosError);
+    }
+  } else {
+    if (!shouldRetryRequest(axiosError)) {
+      throw getFinalError(config, axiosError);
+    }
+  }
+
+  // Create a promise that invokes the retry after the backOffDelay
+  const onBackoffPromise = new Promise((resolve, reject) => {
+    let delay = 0;
+    if (
+      config.checkRetryAfter &&
+      axiosError.response?.headers?.['retry-after']
+    ) {
+      const retryAfter = parseRetryAfter(
+        axiosError.response.headers['retry-after'] as string,
+      );
+      if (
+        retryAfter &&
+        retryAfter > 0 &&
+        retryAfter <= (config.maxRetryAfter ?? 0)
+      ) {
+        delay = retryAfter;
+      } else {
+        reject(getFinalError(config, axiosError));
+        return;
+      }
+    }
+
+    // Increment retry counter
+    (axiosError.config as RaxConfig).raxConfig.currentRetryAttempt! += 1;
+
+    // Calculate retries remaining
+    (axiosError.config as RaxConfig).raxConfig.retriesRemaining =
+      config.retry! -
+      (axiosError.config as RaxConfig).raxConfig.currentRetryAttempt!;
+
+    const retrycount = (axiosError.config as RaxConfig).raxConfig
+      .currentRetryAttempt!;
+
+    if (delay === 0) {
+      if (config.backoffType === 'linear') {
+        delay = retrycount * 1000;
+      } else if (config.backoffType === 'static') {
+        delay = config.retryDelay!;
+      } else {
+        const baseDelay = config.retryDelay!;
+        delay = ((2 ** retrycount - 1) / 2) * baseDelay;
+
+        const jitter = config.jitter || 'none';
+        if (jitter === 'full') {
+          delay = Math.random() * delay;
+        } else if (jitter === 'equal') {
+          delay = delay / 2 + Math.random() * (delay / 2);
+        }
+      }
+
+      if (typeof config.maxRetryDelay === 'number') {
+        delay = Math.min(delay, config.maxRetryDelay);
+      }
+    }
+
+    setTimeout(resolve, delay);
+  });
+
+  if (config.onError) {
+    await config.onError(axiosError);
+  }
+
+  return (
+    Promise.resolve()
+      .then(async () => onBackoffPromise)
+      .then(async () => config.onRetryAttempt?.(axiosError))
+      .then(async () => instance.request(axiosError.config!))
+  );
+}
 /**
  * Determine based on config if we should retry the request.
  * @param err The AxiosError passed to the interceptor.
@@ -455,4 +446,10 @@ declare module 'axios' {
 	export interface AxiosRequestConfig {
 		raxConfig?: RetryConfig;
 	}
+}
+function getFinalError(config: RetryConfig, currentError: AxiosError): AxiosError {
+  if (config.returnFirstError && config.errors && config.errors.length > 0) {
+    return config.errors[0];
+  }
+  return currentError;
 }

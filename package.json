@@ -1,7 +1,7 @@
 {
-  "name": "@bozorgwar/retry-axios",
-   "version": "4.1.0",
-  "description": "Enhanced retry-axios with returnFirstError, header fix, and reliable retry counting",
+  "name": "@sharonyen/retry-axios",
+  "version": "3.9.0",
+  "description": "A maintained fork of retry-axios with returnFirstError, header fixes, and reliable retry counting",
   "exports": {
     ".": {
       "types": {
@@ -21,8 +21,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bozorgwar/retry-axios.git"
+    "url": "git+https://github.com/sharonyen0022/retry-axios.git"
   },
+  "bugs": {
+    "url": "https://github.com/sharonyen0022/retry-axios/issues"
+  },
+  "homepage": "https://github.com/sharonyen0022/retry-axios#readme",
   "scripts": {
     "fix": "biome check --write .",
     "lint": "biome check .",
@@ -35,18 +39,23 @@
     "pretest": "npm run compile",
     "test:watch": "vitest watch",
     "license-check": "jsgl --local .",
-    "clean": "rimraf build"
+    "clean": "rimraf build",
+    "prepublishOnly": "npm run compile && npm run test"
   },
   "keywords": [
     "axios",
-    "retry"
+    "retry",
+    "http",
+    "fork",
+    "sharonyen"
   ],
   "author": {
-    "name": "bozorgwar"
+    "name": "sharonyen",
+    "url": "https://github.com/sharonyen0022"
   },
   "license": "Apache-2.0",
   "peerDependencies": {
-    "axios": "*"
+    "axios": ">=1.2.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.3",
@@ -63,6 +72,9 @@
   "files": [
     "build/src"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "c8": {
     "exclude": [
       "build/test",

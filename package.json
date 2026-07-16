@@ -1,8 +1,8 @@
 {
   "name": "@sharonyen/retry-axios",
-  "version": "3.9.1",
+  "version": "3.9.2",
   "description": "A maintained fork of retry-axios with returnFirstError, header fixes, and reliable retry counting",
-   "bin": {
+  "bin": {
     "retry-axios-test": "./bin/cli.js"
   },
   "exports": {

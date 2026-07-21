@@ -1,29 +1,39 @@
-# retry-axios
 
-> Use Axios interceptors to automatically retry failed requests.  Super flexible. Built in exponential backoff.
+```markdown
+# @sharonyen/retry-axios
+
+> Use Axios interceptors to automatically retry failed requests. Super flexible. Built in exponential backoff. A maintained fork with `returnFirstError`, header fixes, reliable retry counting, and a built-in CLI tester.
 
 ![retry-axios](https://raw.githubusercontent.com/justinbeckwith/retry-axios/main/site/retry-axios.webp)
 
-[![NPM Version][npm-image]][npm-url]
-[![GitHub Actions][github-image]][github-url]
-[![codecov][codecov-image]][codecov-url]
-[![Biome][biome-image]][biome-url]
+[![NPM Version](https://img.shields.io/npm/v/@sharonyen/retry-axios.svg)](https://www.npmjs.com/package/@sharonyen/retry-axios)
+[![npm downloads](https://img.shields.io/npm/dw/@sharonyen/retry-axios.svg)](https://www.npmjs.com/package/@sharonyen/retry-axios)
+[![jsDelivr hits](https://data.jsdelivr.com/v1/package/npm/@sharonyen/retry-axios/badge)](https://www.jsdelivr.com/package/npm/@sharonyen/retry-axios)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@sharonyen/retry-axios)](https://bundlephobia.com/package/@sharonyen/retry-axios)
+[![GitHub Actions](https://github.com/sharonyen0022/retry-axios/workflows/ci/badge.svg)](https://github.com/sharonyen0022/retry-axios/actions/)
+[![codecov](https://codecov.io/gh/sharonyen0022/retry-axios/branch/main/graph/badge.svg)](https://codecov.io/gh/sharonyen0022/retry-axios)
+[![Biome](https://img.shields.io/badge/Biome-60a5fa?style=flat&logo=biome&logoColor=fff)](https://biomejs.dev)
+
+## ⚡ Quick Test (No Installation Required)
+Want to test the retry logic instantly? Use our built-in CLI tool:
+```bash
+npx @sharonyen/retry-axios https://httpbin.org/status/500
+```
+*This will automatically download the latest version and test the retry mechanism against a server that intentionally returns a 500 error.*
 
 ## Installation
 
 ```sh
-npm install retry-axios
+npm install @sharonyen/retry-axios
 ```
 
-## CDN
-
-For front-end applications, you can also use `retry-axios` directly from a CDN without a build step. This is useful for quick prototypes or environments where you can't use npm.
+## 🌐 Usage via CDN (No Build Step)
+For front-end applications, you can also use `@sharonyen/retry-axios` directly from a CDN without a build step. This is useful for quick prototypes or environments where you cannot use npm.
 
 ### jsDelivr
-
 ```html
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/retry-axios@4.0.0/build/src/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@sharonyen/retry-axios/build/src/index.js"></script>
 <script>
   // Attach retry-axios to the global axios object
   rax.attach();
@@ -40,10 +50,9 @@ For front-end applications, you can also use `retry-axios` directly from a CDN w
 ```
 
 ### unpkg
-
 ```html
 <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-<script src="https://unpkg.com/retry-axios@4.0.0/build/src/index.js"></script>
+<script src="https://unpkg.com/@sharonyen/retry-axios/build/src/index.js"></script>
 <script>
   // Attach retry-axios to the global axios object
   rax.attach();
@@ -65,14 +74,14 @@ To use this library, import it alongside of `axios`:
 
 ```js
 // Just import rax and your favorite version of axios
-const rax = require('retry-axios');
+const rax = require('@sharonyen/retry-axios');
 const axios = require('axios');
 ```
 
-Or, if you're using TypeScript / es modules:
+Or, if you are using TypeScript / ES modules:
 
 ```js
-import * as rax from 'retry-axios';
+import * as rax from '@sharonyen/retry-axios';
 import axios from 'axios';
 ```
 
@@ -94,7 +103,7 @@ const interceptorId = rax.attach(myAxiosInstance);
 const res = await myAxiosInstance.get('https://test.local');
 ```
 
-You have a lot of options...
+You have a lot of options:
 
 ```js
 const interceptorId = rax.attach();
@@ -110,12 +119,12 @@ const res = await axios({
     // - For 'linear': Ignored (uses attempt * 1000)
     retryDelay: 100,
 
-    // HTTP methods to automatically retry.  Defaults to:
+    // HTTP methods to automatically retry. Defaults to:
     // ['GET', 'HEAD', 'OPTIONS', 'DELETE', 'PUT']
     httpMethodsToRetry: ['GET', 'HEAD', 'OPTIONS', 'DELETE', 'PUT'],
 
-    // The response status codes to retry.  Supports a double
-    // array with a list of ranges.  Defaults to:
+    // The response status codes to retry. Supports a double
+    // array with a list of ranges. Defaults to:
     // [[100, 199], [429, 429], [500, 599]]
     statusCodesToRetry: [[100, 199], [429, 429], [500, 599]],
 
@@ -155,7 +164,7 @@ The `backoffType` option controls how delays between retry attempts are calculat
 
 #### Exponential Backoff (default)
 
-Uses the formula: `((2^attempt - 1) / 2) * retryDelay` milliseconds
+Uses the formula: `((2^attempt - 1) / 2) * retryDelay` milliseconds.
 
 The `retryDelay` parameter (defaults to 100ms) is used as the base multiplier for the exponential calculation.
 
@@ -200,7 +209,7 @@ raxConfig: {
 
 #### Linear Backoff
 
-Delay increases linearly: `attempt * 1000` milliseconds
+Delay increases linearly: `attempt * 1000` milliseconds.
 
 **The `retryDelay` option is ignored when using linear backoff.**
 
@@ -392,13 +401,13 @@ const res = await axios({
     // Override the decision making process on if you should retry
     shouldRetry: err => {
       const cfg = rax.getConfig(err);
-      if (cfg.currentRetryAttempt >= cfg.retry) return false // ensure max retries is always respected
+      if (cfg.currentRetryAttempt >= cfg.retry) return false; // ensure max retries is always respected
 
       // Always retry this status text, regardless of code or request type
-      if (err.response.statusText.includes('Try again')) return true
+      if (err.response.statusText.includes('Try again')) return true;
 
       // Handle the request based on your other config options, e.g. `statusCodesToRetry`
-      return rax.shouldRetryRequest(err)
+      return rax.shouldRetryRequest(err);
     }
   }
 });
@@ -461,12 +470,23 @@ This library attaches an `interceptor` to an axios instance you pass to the API.
 ## License
 
 [Apache-2.0](LICENSE)
+```
 
-[github-image]: https://github.com/JustinBeckwith/retry-axios/workflows/ci/badge.svg
-[github-url]: https://github.com/JustinBeckwith/retry-axios/actions/
-[codecov-image]: https://codecov.io/gh/JustinBeckwith/retry-axios/branch/main/graph/badge.svg
-[codecov-url]: https://codecov.io/gh/JustinBeckwith/retry-axios
-[npm-image]: https://img.shields.io/npm/v/retry-axios.svg
-[npm-url]: https://npmjs.org/package/retry-axios
-[biome-image]: https://img.shields.io/badge/Biome-60a5fa?style=flat&logo=biome&logoColor=fff
-[biome-url]: https://biomejs.dev
+---
+
+### Final Execution Steps
+
+Run these exact commands in your terminal to publish the update:
+
+```bash
+git add .
+git commit -m "docs: standardize README with @sharonyen/retry-axios branding and CLI quick test"
+git push origin main
+npm version patch
+npm publish --ignore-scripts
+```
+
+After publishing, test it from a different directory to confirm the CLI works perfectly:
+```bash
+npx @sharonyen/retry-axios https://httpbin.org/status/500
+```
